@@ -2,6 +2,7 @@ import { Static, Type } from "@sinclair/typebox";
 
 export const Product = Type.Object({
   id: Type.String(),
+  title: Type.String(),
   price: Type.Number(),
   weigh: Type.Number(),
 })

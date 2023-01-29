@@ -1,9 +1,9 @@
 import { Static, Type } from "@sinclair/typebox";
-import { ProductList } from "./product";
 
 export const Cart = Type.Object({
-  id: Type.Integer(),
-  products: ProductList,
+  userId: Type.Integer(),
+  id: Type.Optional(Type.String()),
+  products: Type.Array(Type.String()),
   cost: Type.Number(),
 })
 export type CartType = Static<typeof Cart>;
