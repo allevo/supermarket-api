@@ -1,15 +1,18 @@
 import { Static, Type } from "@sinclair/typebox";
 import Ajv from "ajv";
-import { FastifyPluginAsync } from "fastify"
+import { FastifyPluginAsync, FastifyPluginOptions } from "fastify"
 import axios from 'axios'
 import { ProductList, ProductListType } from "../../../types/product";
 import fastifyCircuitBreaker from '@fastify/circuit-breaker'
+import { SupermarketConfType } from "../../../app";
 
-const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
+const example: FastifyPluginAsync<SupermarketConfType & FastifyPluginOptions> = async (fastify, opts): Promise<void> => {
   await fastify.register(fastifyCircuitBreaker, {
-    threshold: 1, // default 5
-    timeout: 500, // default 10000
+    threshold: 5, // default 5
+    timeout: 10000, // default 10000
   })
+
+  const productUrl = opts.PRODUCT_URL
 
   const ajv = new Ajv({})
   const isAValidProductList = ajv.compile(FakeStoreProducts)
@@ -24,10 +27,14 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   }, async function (req, reply) {
     req.log.info('Get products')
 
-    const {data, status } = await axios.get('https://fakestoreapi.com/products')
+    const {data, status} = await axios.get(productUrl, {
+      // Avoid to throw error because I want to handle it manually
+      validateStatus: () => true,
+    })
 
     if (status !== 200) {
-      throw new Error('Fail download products')
+      req.log.info({ status }, 'Fail download products')
+      throw this.httpErrors.badGateway('Fail download products')
     }
 
     const products: FakeStoreProductsType = data

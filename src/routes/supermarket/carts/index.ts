@@ -1,10 +1,11 @@
 import { Static, Type } from "@sinclair/typebox";
-import { FastifyPluginAsync } from "fastify"
+import { FastifyPluginAsync, FastifyPluginOptions } from "fastify"
 import { Cart, CartType } from "../../../types/cart";
 import fastifyMongodb from '@fastify/mongodb'
 import { WithId } from "mongodb";
 // @ts-ignore
 import { Supermarket } from '@allevo/green-supermarket'
+import { SupermarketConfType } from "../../../app";
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -13,9 +14,9 @@ declare module 'fastify' {
 }
 
 
-const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
+const example: FastifyPluginAsync<SupermarketConfType & FastifyPluginOptions> = async (fastify, opts: SupermarketConfType & FastifyPluginOptions): Promise<void> => {
   fastify.register(fastifyMongodb, {
-    url: 'mongodb://localhost:27017/supermarket'
+    url: opts.MONGODB_URL,
   })
 
   const supermarket = new Supermarket([
@@ -26,7 +27,13 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   ], { deliveryFactor: 0.5 })
   fastify.decorate('supermarket', supermarket)
 
-  const userId = 55;
+  fastify.addHook("onRequest", async (request, reply) => {
+    try {
+      await request.jwtVerify()
+    } catch (err) {
+      reply.send(err)
+    }
+  })
 
   fastify.get<{ Reply: CartType }>('/mine', {
     schema: {
@@ -37,6 +44,7 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   }, async function (request, reply) {
     const cartsCollection = this.mongo.db!.collection<CartEntity>('carts')
     const supermarket = this.supermarket
+    const userId = request.user.userId
 
     const cartEntity: WithId<CartEntity> | null = await cartsCollection.findOne({ userId, closed: false })
     if (!cartEntity) {
@@ -66,12 +74,14 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   }, async function (request, reply) {
     const cartsCollection = this.mongo.db!.collection<CartEntity>('carts')
     const supermarket = this.supermarket
+    const userId = request.user.userId
 
     await cartsCollection.updateOne({ userId, closed: false }, {
       $push: { products: request.body.product },
     }, { upsert: true })
 
     const cartEntity: WithId<CartEntity> | null = await cartsCollection.findOne({ userId, closed: false })
+    /* istanbul ignore if */
     if (cartEntity === null) {
       throw new Error('never happen')
     }
@@ -93,20 +103,27 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       }
     }
   }, async function (request, reply) {
+    if (!request.user.permissions.includes('checkout')) {
+      throw this.httpErrors.forbidden('"checkout" permission is missing')
+    }
+
     const cartsCollection = this.mongo.db!.collection<CartEntity>('carts')
     const supermarket = this.supermarket
+    const userId = request.user.userId
 
     const cartEntity: WithId<CartEntity> | null = await cartsCollection.findOne({ userId, closed: false })
+    /* istanbul ignore if */
     if (cartEntity === null) {
       throw new Error('Unable to close non-existing cart')
     }
+    /* istanbul ignore if */
     if (cartEntity.products.length === 0) {
       throw new Error('Unable to close empty cart')
     }
 
     const cart = supermarket.createCartFromArray(cartEntity.products)
     const cost = supermarket.createAutomaticCheckout().calculateCartCost(cart)
-    const cO2Impact = supermarket.calculateCO2Impact(cart, request.body.distance)
+    const cO2Impact = supermarket.getDelivery().calculateCO2Impact(cart, request.body.distance)
 
     await cartsCollection.updateOne({ userId, closed: false }, {
       $set: {
@@ -127,20 +144,20 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   })
 }
 
-const PatchCart = Type.Object({
+export const PatchCart = Type.Object({
   product: Type.String(),
 })
-type PatchCartType = Static<typeof PatchCart>;
-const CheckoutRequest = Type.Object({
+export type PatchCartType = Static<typeof PatchCart>;
+export const CheckoutRequest = Type.Object({
   distance: Type.Number(),
   paymentToken: Type.String(),
 })
-type CheckoutRequestType = Static<typeof CheckoutRequest>;
-const CheckoutResponse = Type.Object({
+export type CheckoutRequestType = Static<typeof CheckoutRequest>;
+export const CheckoutResponse = Type.Object({
   cost: Type.Number(),
   cO2Impact: Type.Number(),
 })
-type CheckoutResponseType = Static<typeof CheckoutResponse>
+export type CheckoutResponseType = Static<typeof CheckoutResponse>
 
 interface CartEntity {
   userId: number,

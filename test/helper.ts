@@ -10,7 +10,12 @@ const AppPath = path.join(__dirname, '..', 'src', 'app.ts')
 // Fill in this config with all the configurations
 // needed for testing the application
 async function config () {
-  return {}
+  const dbName = 'supermarket-test-' + `${Math.random()}`.split('.')[1]
+  return {
+    JWT_SECRET: 'test-secret',
+    MONGODB_URL: `mongodb://localhost:27017/${dbName}`,
+    PRODUCT_URL: 'https://fakestoreapi.com/products',
+  }
 }
 
 // Automatically build and tear down our instance

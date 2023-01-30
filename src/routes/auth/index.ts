@@ -1,16 +1,13 @@
 import { Static, Type } from "@sinclair/typebox";
-import { FastifyPluginAsync } from "fastify"
-import fastifyJWT from '@fastify/jwt'
+import { FastifyPluginAsync, FastifyPluginOptions } from "fastify"
+import { SupermarketConfType } from "../../app";
 
 const users = [
   { userId: 42, username: 'allevo', password: 'pippo', permissions: ['checkout'] },
   { userId: 666, username: 'devil', password: 'devil', permissions: [] }
 ]
 
-const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
-  fastify.register(fastifyJWT, {
-    secret: 'supersecret'
-  })
+const example: FastifyPluginAsync<SupermarketConfType & FastifyPluginOptions> = async (fastify, opts): Promise<void> => {
 
   fastify.post<{ Body: LoginRequestType, Reply: LoginResponseType }>('/login', {
     schema: {
@@ -24,10 +21,10 @@ const example: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
     const user = users.find(u => u.username === username)
     if (!user) {
-      throw new Error('User not found')
+      throw fastify.httpErrors.unauthorized('Wrong credential')
     }
     if (user.password !== password) {
-      throw new Error('User not found')
+      throw fastify.httpErrors.unauthorized('Wrong credential')
     }
 
     const { userId, permissions } = user
